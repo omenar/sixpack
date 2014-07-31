@@ -9,6 +9,7 @@ from . import __version__
 from config import CONFIG as cfg
 import db
 from models import Experiment
+from analysis import ExportExperiment
 import utils
 
 app = Flask(__name__)
@@ -18,12 +19,10 @@ js = Bundle('js/vendor/jquery.js', 'js/vendor/d3.js',
             'js/vendor/bootstrap.js', 'js/experiment.js', 'js/chart.js',
             'js/sixpack.js', 'js/vendor/underscore-min.js', 'js/vendor/spin.min.js',
             'js/vendor/waypoints.min.js', 'js/vendor/zeroclipboard.min.js',
-            filters=['closure_js'],
             output="{0}/sixpack.js".format(cfg.get('asset_path', 'gen')))
 
 css = Bundle('css/vendor/bootstrap.css',
              'css/vendor/bootstrap-responsive.css', 'css/sixpack.css',
-             filters=['yui_css'],
              output="{0}/sixpack.css".format(cfg.get('asset_path', 'gen')))
 
 assets = Environment(app)
@@ -40,14 +39,14 @@ def status():
 
 @app.route("/")
 def hello():
-    experiments = Experiment.all(db.REDIS)
+    experiments = Experiment.all(exclude_archived=True, redis=db.REDIS)
     experiments = [exp.name for exp in experiments]
     return render_template('dashboard.html', experiments=experiments, page='home')
 
 
 @app.route('/archived')
 def archived():
-    experiments = Experiment.all(db.REDIS, False)
+    experiments = Experiment.all(exclude_archived=False, redis=db.REDIS)
     experiments = [exp.name for exp in experiments if exp.is_archived()]
     return render_template('dashboard.html', experiments=experiments, page='archived')
 
@@ -79,7 +78,8 @@ def json_details(experiment_name):
 def export(experiment_name):
     experiment = find_or_404(experiment_name)
 
-    response = make_response(experiment.csvify())
+    export = ExportExperiment(experiment=experiment)
+    response = make_response(export())
     response.headers["Content-Type"] = "text/csv"
     # force a download with the content-disposition headers
     filename = "sixpack_export_{0}".format(experiment_name)
